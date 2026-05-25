@@ -21,6 +21,7 @@ class Game {
         this.peer = null;
         this.conn = null;
         this.roomCode = '';
+        this.connectionOpened = false;
         this.vfxEvents = []; // Queue for host to broadcast visual/audio triggers
         
         // Apples
@@ -70,7 +71,7 @@ class Game {
                 if (key === 'd' || key === 'arrowright') clientKey = 'arrowright';
                 if (key === ' ' || key === 'enter') clientKey = 'enter';
 
-                if (clientKey && this.conn) {
+                if (clientKey && this.conn && this.conn.open) {
                     this.conn.send({
                         type: 'input',
                         key: clientKey,
@@ -113,7 +114,7 @@ class Game {
             const key = e.key.toLowerCase();
             this.keys[key] = false;
 
-            if (this.state === 'playing' && this.mode === 'online-client' && this.conn) {
+            if (this.state === 'playing' && this.mode === 'online-client' && this.conn && this.conn.open) {
                 let clientKey = null;
                 if (key === 'w' || key === 'arrowup') clientKey = 'arrowup';
                 if (key === 's' || key === 'arrowdown') clientKey = 'arrowdown';
@@ -207,6 +208,7 @@ class Game {
                 this.peer = null;
             }
             this.conn = null;
+            this.connectionOpened = false;
             document.getElementById('create-lobby-ui').classList.add('hidden');
             document.getElementById('join-lobby-ui').classList.add('hidden');
             document.getElementById('room-code-display').innerText = '----';
@@ -280,6 +282,7 @@ class Game {
             btnCreate.classList.remove('active');
             joinLobby.classList.remove('hidden');
             createLobby.classList.add('hidden');
+            this.preInitClientPeer();
         });
 
         document.getElementById('btn-connect-room').addEventListener('click', () => {
@@ -304,7 +307,7 @@ class Game {
 
             // CLIENT MODE INPUT TRANSMISSION
             if (this.mode === 'online-client' && playerIdx === 1) {
-                if (this.conn) {
+                if (this.conn && this.conn.open) {
                     this.conn.send({
                         type: 'input',
                         key: 'arrow' + dir,
@@ -338,7 +341,7 @@ class Game {
             const playerIdx = parseInt(btn.getAttribute('data-player'));
             const dir = btn.getAttribute('data-dir');
             
-            if (this.mode === 'online-client' && playerIdx === 1 && this.conn) {
+            if (this.mode === 'online-client' && playerIdx === 1 && this.conn && this.conn.open) {
                 this.conn.send({
                     type: 'input',
                     key: 'arrow' + dir,
@@ -365,7 +368,7 @@ class Game {
             if (this.state !== 'playing') return;
 
             if (this.mode === 'online-client' && playerIdx === 1) {
-                if (this.conn) {
+                if (this.conn && this.conn.open) {
                     this.conn.send({
                         type: 'input',
                         key: 'enter',
@@ -383,7 +386,7 @@ class Game {
             btn.classList.remove('touch-active');
             
             const playerIdx = parseInt(btn.getAttribute('data-player'));
-            if (this.mode === 'online-client' && playerIdx === 1 && this.conn) {
+            if (this.mode === 'online-client' && playerIdx === 1 && this.conn && this.conn.open) {
                 this.conn.send({
                     type: 'input',
                     key: 'enter',
@@ -428,14 +431,26 @@ class Game {
     // PEERJS NETWORK INTEGRATION
     initHostPeer() {
         if (this.peer) this.peer.destroy();
+        this.connectionOpened = false;
         
         const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
         this.roomCode = roomCode;
         
         document.getElementById('host-status').innerText = "Generating Room ID...";
         
-        // PeerJS connection
-        this.peer = new Peer(`snakeclash-${roomCode}`);
+        // PeerJS connection setup with custom high-speed STUN config
+        this.peer = new Peer(`snakeclash-${roomCode}`, {
+            debug: 2,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' }
+                ]
+            }
+        });
         
         this.peer.on('open', (id) => {
             document.getElementById('room-code-display').innerText = roomCode;
@@ -457,8 +472,45 @@ class Game {
         });
     }
 
+    preInitClientPeer() {
+        // Pre-initialize client peer in the background to speed up connecting
+        if (this.peer && !this.peer.destroyed && this.peer.id) {
+            // Already initialized and open
+            return;
+        }
+        
+        if (this.peer) {
+            this.peer.destroy();
+        }
+        this.connectionOpened = false;
+        
+        document.getElementById('client-status').innerText = "Menghubungkan ke server signaling...";
+        
+        this.peer = new Peer(null, {
+            debug: 2,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' }
+                ]
+            }
+        });
+        
+        this.peer.on('open', (id) => {
+            document.getElementById('client-status').innerText = "Masukkan kode room dari pembuat room.";
+        });
+        
+        this.peer.on('error', (err) => {
+            document.getElementById('client-status').innerText = "Gagal terhubung ke server signaling. Coba lagi.";
+            console.error(err);
+        });
+    }
+
     connectToHost() {
-        if (this.peer) this.peer.destroy();
+        this.connectionOpened = false;
         
         const inputVal = document.getElementById('room-code-input').value.trim();
         if (inputVal.length !== 4 || isNaN(inputVal)) {
@@ -468,38 +520,35 @@ class Game {
 
         document.getElementById('client-status').innerText = "Connecting to room " + inputVal + "...";
         
-        this.peer = new Peer(); // Client creates random Peer ID
-        
-        this.peer.on('open', (id) => {
+        const performConnect = () => {
             this.conn = this.peer.connect(`snakeclash-${inputVal}`);
             this.setupConnection();
-        });
+        };
 
-        this.peer.on('error', (err) => {
-            document.getElementById('client-status').innerText = "Koneksi gagal. Cek kembali Kode Room.";
-            console.error(err);
-        });
+        // If peer is already open, connect immediately!
+        if (this.peer && !this.peer.destroyed && this.peer.id) {
+            performConnect();
+        } else {
+            // Re-initialize and connect on open
+            this.preInitClientPeer();
+            this.peer.once('open', () => {
+                performConnect();
+            });
+        }
     }
 
     setupConnection() {
-        this.conn.on('open', () => {
-            if (this.mode === 'online-host') {
-                document.getElementById('host-status').innerText = "Connected! Launching game...";
-                
-                // Transmit initialization variables to P2
-                this.conn.send({
-                    type: 'init',
-                    p1Color: this.p1Color,
-                    p2Color: this.p2Color
-                });
+        // Fast connection listener trigger to prevent WebRTC open race conditions
+        const triggerOpen = () => {
+            this.handleConnectionOpen();
+        };
 
-                setTimeout(() => {
-                    this.startGame();
-                }, 1000);
-            } else {
-                document.getElementById('client-status').innerText = "Connected! Waiting for host to start...";
-            }
-        });
+        this.conn.on('open', triggerOpen);
+
+        // IMMEDIATE CHECK: If connection handshake completes instantly, resolve it immediately!
+        if (this.conn.open) {
+            triggerOpen();
+        }
 
         this.conn.on('data', (data) => {
             if (data.type === 'init') {
@@ -507,22 +556,19 @@ class Game {
                 this.p2Color = data.p2Color;
             }
             else if (data.type === 'start') {
-                // Client receives start notice
                 this.startClientGame(data);
             }
             else if (data.type === 'input') {
-                // Host receives client keypress
                 if (data.state === 'keydown') {
                     this.keys[data.key] = true;
                     if (data.key === 'enter') {
-                        this.triggerAction(1); // Player 2 fires ice
+                        this.triggerAction(1);
                     }
                 } else if (data.state === 'keyup') {
                     this.keys[data.key] = false;
                 }
             }
             else if (data.type === 'state') {
-                // Client syncs canvas layout
                 this.applySyncedState(data);
             }
         });
@@ -536,14 +582,40 @@ class Game {
         });
     }
 
+    handleConnectionOpen() {
+        if (this.connectionOpened) return; // Prevent double trigger
+        this.connectionOpened = true;
+
+        if (this.mode === 'online-host') {
+            document.getElementById('host-status').innerText = "Connected! Launching game...";
+            
+            // Transmit initialization variables to P2
+            this.conn.send({
+                type: 'init',
+                p1Color: this.p1Color,
+                p2Color: this.p2Color
+            });
+
+            setTimeout(() => {
+                this.startGame();
+            }, 1000);
+        } else {
+            document.getElementById('client-status').innerText = "Connected! Waiting for host to start...";
+        }
+    }
+
     handleDisconnect() {
         if (this.state === 'playing') {
             this.state = 'menu';
             this.showScreen('menu');
             alert("Lawan terputus dari room!");
         }
-        document.getElementById('host-status').innerText = "Terputus.";
-        document.getElementById('client-status').innerText = "Terputus.";
+        if (this.mode === 'online-host') {
+            document.getElementById('host-status').innerText = "Terputus. Menunggu Player 2...";
+        } else {
+            document.getElementById('client-status').innerText = "Koneksi terputus/gagal. Silakan coba hubungkan lagi.";
+        }
+        this.connectionOpened = false;
     }
 
     startClientGame(data) {
@@ -704,7 +776,7 @@ class Game {
         this.showScreen('playing');
         
         // Send initial start signal to Client
-        if (this.mode === 'online-host' && this.conn) {
+        if (this.mode === 'online-host' && this.conn && this.conn.open) {
             this.conn.send({
                 type: 'start',
                 p1Color: this.p1Color,
@@ -795,7 +867,7 @@ class Game {
         this.updateHUD();
 
         // Host Mode: Transmit synced frame package
-        if (this.mode === 'online-host' && this.conn) {
+        if (this.mode === 'online-host' && this.conn && this.conn.open) {
             this.conn.send({
                 type: 'state',
                 snakes: this.snakes.map(s => ({
