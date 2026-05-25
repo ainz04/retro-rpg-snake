@@ -132,9 +132,10 @@ class Game {
             }
         });
 
-        // Detect if it is a mobile device (phone or tablet)
-        this.isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
-                              (window.innerWidth <= 1024 && (('ontouchstart' in window) || navigator.maxTouchPoints > 0));
+        // Detect if it is a mobile device or touch-enabled device (phone, tablet, iPad, or touchscreen device)
+        this.isMobileDevice = ('ontouchstart' in window) || 
+                              (navigator.maxTouchPoints > 0) ||
+                              /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
         // UI buttons
         document.getElementById('btn-start').addEventListener('click', () => {
