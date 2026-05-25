@@ -132,16 +132,9 @@ class Game {
             }
         });
 
-        // Touch toggle checkbox
-        const touchCheckbox = document.getElementById('checkbox-touch');
-        
-        // Auto-check based on device capability
-        this.touchControlsEnabled = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-        touchCheckbox.checked = this.touchControlsEnabled;
-
-        touchCheckbox.addEventListener('change', (e) => {
-            this.touchControlsEnabled = e.target.checked;
-        });
+        // Detect if it is a mobile device (phone or tablet)
+        this.isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                              (window.innerWidth <= 1024 && (('ontouchstart' in window) || navigator.maxTouchPoints > 0));
 
         // UI buttons
         document.getElementById('btn-start').addEventListener('click', () => {
@@ -409,7 +402,7 @@ class Game {
         const padP1 = document.getElementById('touch-pad-p1');
         const padP2 = document.getElementById('touch-pad-p2');
 
-        if (this.state !== 'playing' || !this.touchControlsEnabled) {
+        if (this.state !== 'playing' || !this.isMobileDevice) {
             container.classList.add('hidden');
             return;
         }
@@ -438,7 +431,7 @@ class Game {
         
         document.getElementById('host-status').innerText = "Generating Room ID...";
         
-        // PeerJS connection setup with custom high-speed STUN config
+        // PeerJS connection setup with custom high-speed STUN & TURN config
         this.peer = new Peer(`snakeclash-${roomCode}`, {
             debug: 2,
             config: {
@@ -447,7 +440,16 @@ class Game {
                     { urls: 'stun:stun1.l.google.com:19302' },
                     { urls: 'stun:stun2.l.google.com:19302' },
                     { urls: 'stun:stun3.l.google.com:19302' },
-                    { urls: 'stun:stun4.l.google.com:19302' }
+                    { urls: 'stun:stun4.l.google.com:19302' },
+                    {
+                        urls: [
+                            'turn:openrelay.metered.ca:80',
+                            'turn:openrelay.metered.ca:443',
+                            'turns:openrelay.metered.ca:443'
+                        ],
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
                 ]
             }
         });
@@ -494,7 +496,16 @@ class Game {
                     { urls: 'stun:stun1.l.google.com:19302' },
                     { urls: 'stun:stun2.l.google.com:19302' },
                     { urls: 'stun:stun3.l.google.com:19302' },
-                    { urls: 'stun:stun4.l.google.com:19302' }
+                    { urls: 'stun:stun4.l.google.com:19302' },
+                    {
+                        urls: [
+                            'turn:openrelay.metered.ca:80',
+                            'turn:openrelay.metered.ca:443',
+                            'turns:openrelay.metered.ca:443'
+                        ],
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
                 ]
             }
         });
