@@ -568,7 +568,9 @@ class Game {
                 this.p2Color = data.p2Color;
             }
             else if (data.type === 'start') {
-                this.startClientGame(data);
+                if (this.state !== 'playing') {
+                    this.startClientGame(data);
+                }
             }
             else if (data.type === 'input') {
                 if (data.state === 'keydown') {
@@ -608,11 +610,16 @@ class Game {
                 p2Color: this.p2Color
             });
 
-            setTimeout(() => {
-                this.startGame();
-            }, 1000);
+            // Launch immediately
+            this.startGame();
         } else {
-            document.getElementById('client-status').innerText = "Connected! Waiting for host to start...";
+            document.getElementById('client-status').innerText = "Connected! Launching game...";
+            
+            // Launch immediately
+            this.startClientGame({
+                p1Color: this.p1Color,
+                p2Color: this.p2Color
+            });
         }
     }
 
